@@ -45,12 +45,20 @@ func main() {
 				visit(link)
 			}
 		})
+		doc.Find("img").Each(func(i int, s *goquery.Selection) {
+			href, exists := s.Attr("src")
+			if exists {
+				link := resolveLink(u, href)
+				visit(link)
+			}
+		})
 	}
 	visit(startURL)
-	fmt.Println("Visited ", len(visited), "pages")
+
 	for i, u := range urls {
 		fmt.Println(i, u)
 	}
+	fmt.Println("Visited ", len(urls), len(visited), "pages")
 }
 
 func resolveLink(baseURL, href string) string {
