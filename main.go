@@ -13,6 +13,10 @@ func main() {
 
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
+	elementMatcher := map[string]string{
+		"a":   "href",
+		"img": "src",
+	}
 
 	var visit func(string)
 	visit = func(u string) {
@@ -37,21 +41,16 @@ func main() {
 			return
 		}
 
-		// Find and visit all links
-		doc.Find("a").Each(func(i int, s *goquery.Selection) {
-			href, exists := s.Attr("href")
-			if exists {
-				link := resolveLink(u, href)
-				visit(link)
-			}
-		})
-		doc.Find("img").Each(func(i int, s *goquery.Selection) {
-			href, exists := s.Attr("src")
-			if exists {
-				link := resolveLink(u, href)
-				visit(link)
-			}
-		})
+		// Find and visit all pages and images
+		for selector, attr := range elementMatcher {
+			doc.Find(selector).Each(func(i int, s *goquery.Selection) {
+				href, exists := s.Attr(attr)
+				if exists {
+					link := resolveLink(u, href)
+					visit(link)
+				}
+			})
+		}
 	}
 	visit(startURL)
 
