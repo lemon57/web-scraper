@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 
 func main() {
 	startURL := "https://books.toscrape.com/"
+	countBar := progressbar.Default(-1, "Scraping website "+startURL)
 	start := time.Now()
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
@@ -41,6 +43,7 @@ func main() {
 		defer resp.Body.Close()
 
 		file := savePage(u, resp.Body)
+		countBar.Add(1)
 
 		// Create a goquery document
 		doc, err := goquery.NewDocumentFromReader(file)
@@ -99,6 +102,13 @@ func parseCssAndJsFiles(u string) []string {
 			if exists {
 				link := resolveLink(u, css)
 				urls = append(urls, link)
+				resp, err := http.Get(link)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				defer resp.Body.Close()
+				savePage(link, resp.Body)
 			}
 		})
 	}
