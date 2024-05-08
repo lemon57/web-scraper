@@ -59,7 +59,6 @@ func parsePageLinks(u string, visited map[string]bool, urls []string, bar Progre
 	if visited[u] {
 		return urls
 	}
-
 	visited[u] = true
 	bar.Add(1)
 	urls = append(urls, u)
