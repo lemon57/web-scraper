@@ -38,10 +38,10 @@ func main() {
 		}
 		defer resp.Body.Close()
 
-		savePage(u, resp.Body)
+		file := savePage(u, resp.Body)
 
 		// Create a goquery document
-		doc, err := goquery.NewDocumentFromReader(resp.Body)
+		doc, err := goquery.NewDocumentFromReader(file)
 
 		if err != nil {
 			fmt.Println(err)
@@ -81,7 +81,7 @@ func resolveLink(baseURL, href string) string {
 	return base.ResolveReference(u).String()
 }
 
-func savePage(u string, body io.Reader) {
+func savePage(u string, body io.Reader) *os.File {
 	parsedURL, _ := url.Parse(u)
 	path := parsedURL.Path
 	if path == "" || strings.HasSuffix(path, "/") {
@@ -94,13 +94,21 @@ func savePage(u string, body io.Reader) {
 	file, err := os.Create(path)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return nil
 	}
 	defer file.Close()
 
 	_, err = io.Copy(file, body)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return nil
 	}
+
+	fileNew, err := os.Open(path)
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	return fileNew
 }
