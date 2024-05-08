@@ -100,12 +100,8 @@ func TestParsePageLinksNew(t *testing.T) {
 
 	visited := make(map[string]bool)
 	urls := []string{}
-	urls, err := parsePageLinks(server.URL, visited, urls, progressBar)
-	if err != nil {
-		t.Fatalf("parsePageLinks failed: %v", err)
-	}
+	urls = parsePageLinks(server.URL, visited, urls, progressBar)
 
-	// Check the returned URLs
 	expectedURLs := []string{
 		server.URL,
 		resolveLink(server.URL, "/page1"),

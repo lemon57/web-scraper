@@ -32,34 +32,34 @@ const startURL = "https://books.toscrape.com/"
 func main() {
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
+
 	bar := progressbar.Default(-1, "Counting links to parse a website "+startURL)
 	progressBar := &RealProgressBar{bar}
+	// Parse all required links
 	urls = parseCssAndJsFiles(startURL, progressBar)
-	urls, err := parsePageLinks(startURL, visited, urls, progressBar)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	urls = parsePageLinks(startURL, visited, urls, progressBar)
+
 	count := len(urls)
 	bar = progressbar.Default(int64(count), "Scraping a website "+startURL)
 	progressBar = &RealProgressBar{bar}
+	// Scrape all data from parsed links sequentially
 	scrapeWebsiteSequentially(urls, progressBar)
+
 	bar = progressbar.Default(int64(count), "Scraping a website with multi threading "+startURL)
 	progressBar = &RealProgressBar{bar}
+	// Scrape all data from parsed links with multi threading
 	scrapeWebsiteWithMultiThreading(urls, progressBar)
 }
 
-func parsePageLinks(u string, visited map[string]bool, urls []string, bar ProgressBar) (page []string, err error) {
+func parsePageLinks(u string, visited map[string]bool, urls []string, bar ProgressBar) (page []string) {
 	elementMatcher := map[string]string{
 		"a":   "href",
 		"img": "src",
 	}
 	if visited[u] {
-		return urls, nil
+		return urls
 	}
-	if len(urls) > 30 {
-		return urls, nil
-	}
+
 	visited[u] = true
 	bar.Add(1)
 	urls = append(urls, u)
@@ -68,7 +68,7 @@ func parsePageLinks(u string, visited map[string]bool, urls []string, bar Progre
 	resp, err := http.Get(u)
 	if err != nil {
 		fmt.Println(err)
-		return urls, err
+		return urls
 	}
 	defer resp.Body.Close()
 
@@ -76,7 +76,7 @@ func parsePageLinks(u string, visited map[string]bool, urls []string, bar Progre
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		fmt.Println(err)
-		return urls, err
+		return urls
 	}
 
 	// Find and visit all pages and images
@@ -85,15 +85,12 @@ func parsePageLinks(u string, visited map[string]bool, urls []string, bar Progre
 			href, exists := s.Attr(attr)
 			if exists {
 				link := resolveLink(u, href)
-				urls, _ = parsePageLinks(link, visited, urls, bar)
-				if len(urls) > 30 {
-					return
-				}
+				urls = parsePageLinks(link, visited, urls, bar)
 			}
 		})
 	}
 
-	return urls, nil
+	return urls
 }
 
 func parseCssAndJsFiles(u string, bar ProgressBar) []string {
