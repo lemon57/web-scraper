@@ -16,14 +16,18 @@ import (
 
 const startURL = "https://books.toscrape.com/"
 
-var countBar *progressbar.ProgressBar
+var progressBar *progressbar.ProgressBar
 
 func main() {
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
-	countBar = progressbar.Default(-1, "Counting links to parse a website "+startURL)
+	progressBar = progressbar.Default(-1, "Counting links to parse a website "+startURL)
 	urls = parseCssAndJsFiles(startURL)
-	urls, _ = parsePageLinks(startURL, visited, urls)
+	urls, err := parsePageLinks(startURL, visited, urls)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	scrapeWebsite(urls)
 }
 
@@ -36,8 +40,8 @@ func parsePageLinks(u string, visited map[string]bool, urls []string) (page []st
 		return urls, nil
 	}
 	visited[u] = true
+	progressBar.Add(1)
 	urls = append(urls, u)
-	countBar.Add(1)
 
 	// Get the HTML
 	resp, err := http.Get(u)
@@ -96,7 +100,7 @@ func parseCssAndJsFiles(u string) []string {
 			if exists {
 				link := resolveLink(u, css)
 				urls = append(urls, link)
-				countBar.Add(1)
+				progressBar.Add(1)
 			}
 		})
 	}
@@ -106,9 +110,10 @@ func parseCssAndJsFiles(u string) []string {
 
 func scrapeWebsite(urls []string) {
 	count := len(urls)
-	fmt.Println("\nBeginning scraping a website...")
+	fmt.Println("\nTotal links to scrape: ", count)
+	fmt.Println("Beginning scraping a website...")
 	start := time.Now()
-	progressBar := progressbar.Default(int64(count), "Scraping a website "+startURL)
+	progressBar = progressbar.Default(int64(count), "Scraping a website "+startURL)
 	for _, link := range urls {
 		resp, err := http.Get(link)
 		if err != nil {
@@ -139,7 +144,7 @@ func resolveLink(baseURL, href string) string {
 	return base.ResolveReference(u).String()
 }
 
-func savePage(u string, body io.Reader) *os.File {
+func savePage(u string, body io.Reader) {
 	parsedURL, _ := url.Parse(u)
 	path := parsedURL.Path
 	if path == "" || strings.HasSuffix(path, "/") {
@@ -152,21 +157,13 @@ func savePage(u string, body io.Reader) *os.File {
 	file, err := os.Create(path)
 	if err != nil {
 		fmt.Println(err)
-		return nil
+		return
 	}
 	defer file.Close()
 
 	_, err = io.Copy(file, body)
 	if err != nil {
 		fmt.Println(err)
-		return nil
+		return
 	}
-
-	fileNew, err := os.Open(path)
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-
-	return fileNew
 }
