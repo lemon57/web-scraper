@@ -14,64 +14,58 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+const startURL = "https://books.toscrape.com/"
+
+var countBar *progressbar.ProgressBar
+
 func main() {
-	startURL := "https://books.toscrape.com/"
-	countBar := progressbar.Default(-1, "Scraping website "+startURL)
-	start := time.Now()
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
+	countBar = progressbar.Default(-1, "Counting links to parse a website "+startURL)
+	urls = parseCssAndJsFiles(startURL)
+	urls, _ = parsePageLinks(startURL, visited, urls)
+	scrapeWebsite(urls)
+}
+
+func parsePageLinks(u string, visited map[string]bool, urls []string) (page []string, err error) {
 	elementMatcher := map[string]string{
 		"a":   "href",
 		"img": "src",
 	}
-	urls = parseCssAndJsFiles(startURL)
-
-	var visit func(string)
-	visit = func(u string) {
-		if visited[u] {
-			return
-		}
-		visited[u] = true
-		urls = append(urls, u)
-
-		// Get the HTML
-		resp, err := http.Get(u)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer resp.Body.Close()
-
-		file := savePage(u, resp.Body)
-		countBar.Add(1)
-
-		// Create a goquery document
-		doc, err := goquery.NewDocumentFromReader(file)
-
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		// Find and visit all pages and images
-		for selector, attr := range elementMatcher {
-			doc.Find(selector).Each(func(i int, s *goquery.Selection) {
-				href, exists := s.Attr(attr)
-				if exists {
-					link := resolveLink(u, href)
-					visit(link)
-				}
-			})
-		}
+	if visited[u] {
+		return urls, nil
 	}
-	visit(startURL)
+	visited[u] = true
+	urls = append(urls, u)
+	countBar.Add(1)
 
-	for i, u := range urls {
-		fmt.Println(i, u)
+	// Get the HTML
+	resp, err := http.Get(u)
+	if err != nil {
+		fmt.Println(err)
+		return urls, err
 	}
-	duration := time.Since(start)
-	fmt.Println("Scraping time: ", duration.Seconds(), " sec")
-	fmt.Println("Visited ", len(urls), len(visited), "pages")
+	defer resp.Body.Close()
+
+	// Create a goquery document
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return urls, err
+	}
+
+	// Find and visit all pages and images
+	for selector, attr := range elementMatcher {
+		doc.Find(selector).Each(func(i int, s *goquery.Selection) {
+			href, exists := s.Attr(attr)
+			if exists {
+				link := resolveLink(u, href)
+				urls, _ = parsePageLinks(link, visited, urls)
+			}
+		})
+	}
+
+	return urls, nil
 }
 
 func parseCssAndJsFiles(u string) []string {
@@ -102,18 +96,33 @@ func parseCssAndJsFiles(u string) []string {
 			if exists {
 				link := resolveLink(u, css)
 				urls = append(urls, link)
-				resp, err := http.Get(link)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-				defer resp.Body.Close()
-				savePage(link, resp.Body)
+				countBar.Add(1)
 			}
 		})
 	}
 
 	return urls
+}
+
+func scrapeWebsite(urls []string) {
+	count := len(urls)
+	fmt.Println("\nBeginning scraping a website...")
+	start := time.Now()
+	progressBar := progressbar.Default(int64(count), "Scraping a website "+startURL)
+	for _, link := range urls {
+		resp, err := http.Get(link)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer resp.Body.Close()
+
+		savePage(link, resp.Body)
+		progressBar.Add(1)
+	}
+	duration := time.Since(start)
+	fmt.Println("Scraping time: ", duration.Minutes(), " min")
+	fmt.Println("Total downloaded files: ", count)
 }
 
 func resolveLink(baseURL, href string) string {
