@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -34,8 +38,11 @@ func main() {
 		}
 		defer resp.Body.Close()
 
+		savePage(u, resp.Body)
+
 		// Create a goquery document
 		doc, err := goquery.NewDocumentFromReader(resp.Body)
+
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -72,4 +79,28 @@ func resolveLink(baseURL, href string) string {
 	}
 
 	return base.ResolveReference(u).String()
+}
+
+func savePage(u string, body io.Reader) {
+	parsedURL, _ := url.Parse(u)
+	path := parsedURL.Path
+	if path == "" || strings.HasSuffix(path, "/") {
+		path = path + "index.html"
+	}
+
+	path = filepath.Join("books.toscrape.com", path)
+	os.MkdirAll(filepath.Dir(path), os.ModePerm)
+
+	file, err := os.Create(path)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }
