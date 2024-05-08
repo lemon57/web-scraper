@@ -15,25 +15,41 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-const startURL = "https://books.toscrape.com/"
+type ProgressBar interface {
+	Add(int)
+}
 
-var progressBar *progressbar.ProgressBar
+type RealProgressBar struct {
+	*progressbar.ProgressBar
+}
+
+func (p *RealProgressBar) Add(n int) {
+	p.ProgressBar.Add(n)
+}
+
+const startURL = "https://books.toscrape.com/"
 
 func main() {
 	visited := make(map[string]bool)
 	urls := make([]string, 0)
-	progressBar = progressbar.Default(-1, "Counting links to parse a website "+startURL)
-	urls = parseCssAndJsFiles(startURL)
-	urls, err := parsePageLinks(startURL, visited, urls)
+	bar := progressbar.Default(-1, "Counting links to parse a website "+startURL)
+	progressBar := &RealProgressBar{bar}
+	urls = parseCssAndJsFiles(startURL, progressBar)
+	urls, err := parsePageLinks(startURL, visited, urls, progressBar)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	scrapeWebsiteSequentially(urls)
-	scrapeWebsiteWithMultiThreading(urls)
+	count := len(urls)
+	bar = progressbar.Default(int64(count), "Scraping a website "+startURL)
+	progressBar = &RealProgressBar{bar}
+	scrapeWebsiteSequentially(urls, progressBar)
+	bar = progressbar.Default(int64(count), "Scraping a website with multi threading "+startURL)
+	progressBar = &RealProgressBar{bar}
+	scrapeWebsiteWithMultiThreading(urls, progressBar)
 }
 
-func parsePageLinks(u string, visited map[string]bool, urls []string) (page []string, err error) {
+func parsePageLinks(u string, visited map[string]bool, urls []string, bar ProgressBar) (page []string, err error) {
 	elementMatcher := map[string]string{
 		"a":   "href",
 		"img": "src",
@@ -41,8 +57,11 @@ func parsePageLinks(u string, visited map[string]bool, urls []string) (page []st
 	if visited[u] {
 		return urls, nil
 	}
+	if len(urls) > 30 {
+		return urls, nil
+	}
 	visited[u] = true
-	progressBar.Add(1)
+	bar.Add(1)
 	urls = append(urls, u)
 
 	// Get the HTML
@@ -66,7 +85,10 @@ func parsePageLinks(u string, visited map[string]bool, urls []string) (page []st
 			href, exists := s.Attr(attr)
 			if exists {
 				link := resolveLink(u, href)
-				urls, _ = parsePageLinks(link, visited, urls)
+				urls, _ = parsePageLinks(link, visited, urls, bar)
+				if len(urls) > 30 {
+					return
+				}
 			}
 		})
 	}
@@ -74,7 +96,7 @@ func parsePageLinks(u string, visited map[string]bool, urls []string) (page []st
 	return urls, nil
 }
 
-func parseCssAndJsFiles(u string) []string {
+func parseCssAndJsFiles(u string, bar ProgressBar) []string {
 	var urls []string
 	elementMatcher := map[string]string{
 		"link":   "href",
@@ -102,7 +124,7 @@ func parseCssAndJsFiles(u string) []string {
 			if exists {
 				link := resolveLink(u, css)
 				urls = append(urls, link)
-				progressBar.Add(1)
+				bar.Add(1)
 			}
 		})
 	}
@@ -110,12 +132,11 @@ func parseCssAndJsFiles(u string) []string {
 	return urls
 }
 
-func scrapeWebsiteSequentially(urls []string) {
+func scrapeWebsiteSequentially(urls []string, bar ProgressBar) {
 	count := len(urls)
 	fmt.Println("\nTotal links to scrape: ", count)
 	fmt.Println("Beginning scraping a website...")
 	start := time.Now()
-	progressBar = progressbar.Default(int64(count), "Scraping a website "+startURL)
 	for _, link := range urls {
 		resp, err := http.Get(link)
 		if err != nil {
@@ -125,16 +146,15 @@ func scrapeWebsiteSequentially(urls []string) {
 		defer resp.Body.Close()
 
 		savePage(link, resp.Body)
-		progressBar.Add(1)
+		bar.Add(1)
 	}
 	duration := time.Since(start)
 	fmt.Println("Scraping time: ", duration.Minutes(), " min")
 	fmt.Println("Total downloaded files: ", count)
 }
 
-func scrapeWebsiteWithMultiThreading(urls []string) {
+func scrapeWebsiteWithMultiThreading(urls []string, bar ProgressBar) {
 	count := len(urls)
-	progressBar = progressbar.Default(int64(count), "Scraping a website with multi threading "+startURL)
 	start := time.Now()
 	urlChan := make(chan string)
 	var wg sync.WaitGroup
@@ -152,7 +172,7 @@ func scrapeWebsiteWithMultiThreading(urls []string) {
 				}
 				defer resp.Body.Close()
 				savePage(link, resp.Body)
-				progressBar.Add(1)
+				bar.Add(1)
 			}
 		}()
 	}
