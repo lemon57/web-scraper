@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -28,7 +29,8 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	scrapeWebsite(urls)
+	scrapeWebsiteSequentially(urls)
+	scrapeWebsiteWithMultiThreading(urls)
 }
 
 func parsePageLinks(u string, visited map[string]bool, urls []string) (page []string, err error) {
@@ -108,7 +110,7 @@ func parseCssAndJsFiles(u string) []string {
 	return urls
 }
 
-func scrapeWebsite(urls []string) {
+func scrapeWebsiteSequentially(urls []string) {
 	count := len(urls)
 	fmt.Println("\nTotal links to scrape: ", count)
 	fmt.Println("Beginning scraping a website...")
@@ -127,6 +129,43 @@ func scrapeWebsite(urls []string) {
 	}
 	duration := time.Since(start)
 	fmt.Println("Scraping time: ", duration.Minutes(), " min")
+	fmt.Println("Total downloaded files: ", count)
+}
+
+func scrapeWebsiteWithMultiThreading(urls []string) {
+	count := len(urls)
+	progressBar = progressbar.Default(int64(count), "Scraping a website with multi threading "+startURL)
+	start := time.Now()
+	urlChan := make(chan string)
+	var wg sync.WaitGroup
+
+	// Start multiple worker goroutines
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for link := range urlChan {
+				resp, err := http.Get(link)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				defer resp.Body.Close()
+				savePage(link, resp.Body)
+				progressBar.Add(1)
+			}
+		}()
+	}
+
+	// Feed the URLs to the channel
+	for _, link := range urls {
+		urlChan <- link
+	}
+	close(urlChan)
+	wg.Wait()
+
+	duration := time.Since(start)
+	fmt.Println("Scraping time: ", duration.Seconds(), " sec")
 	fmt.Println("Total downloaded files: ", count)
 }
 
